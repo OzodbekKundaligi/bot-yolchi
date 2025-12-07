@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 Yolchi - Maqsadlar Platformasi</title>
+    <link rel="stylesheet" href="./css/style.css">
+    <style>
+        .hero {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 5rem 0;
+            text-align: center;
+        }
+        
+        .hero h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .hero p {
+            font-size: 1.3rem;
+            max-width: 700px;
+            margin: 0 auto 2rem;
+            opacity: 0.9;
+        }
+        
+        .features {
+            padding: 4rem 0;
+            background: #f8f9fa;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+        
+        .feature-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        
+        .stats {
+            padding: 4rem 0;
+        }
+        
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 2rem;
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .cta {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 4rem 0;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="container nav-content">
+            <a href="/" class="logo">🎯 Yolchi</a>
+            <button class="mobile-menu-btn">☰</button>
+            <div class="nav-links">
+                <a href="/">Bosh sahifa</a>
+                <a href="/goals">Maqsadlar</a>
+                <a href="https://t.me/yolchi_goals_bot" target="_blank">Telegram bot</a>
+                <a href="/auth/login" id="login-btn">Kirish</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <h1>Maqsadlaringizga Yolchi bo'ling</h1>
+            <p>Yolchi platformasida maqsadlaringizni belgilang, boshqalar bilan birga erishing va hayotingizni yangi bosqichga ko'taring.</p>
+            <div class="hero-actions">
+                <a href="/goals" class="btn">🎯 Maqsadlarni ko'rish</a>
+                <a href="https://t.me/yolchi_goals_bot" class="btn btn-secondary" target="_blank">🤖 Botga o'tish</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features">
+        <div class="container">
+            <h2 class="text-center">Nega Yolchi?</h2>
+            <p class="text-center" style="color: #718096; max-width: 700px; margin: 1rem auto 0;">
+                Bizning platforma orqali maqsadlaringizni boshqarish oson va samarali bo'ladi
+            </p>
+            
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🎯</div>
+                    <h3>Maqsad yaratish</h3>
+                    <p>O'z maqsadlaringizni yarating va ularga erishish yo'lini belgilang.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">👥</div>
+                    <h3>Jamoa bilan ishlash</h3>
+                    <p>Boshqalarning maqsadlariga qo'shiling yoki o'zingizning jamoangizni yarating.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">📊</div>
+                    <h3>Progress monitoring</h3>
+                    <p>Maqsadlaringizga qanchalik yaqinlashayotganingizni kuzating.</p>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">🏆</div>
+                    <h3>Mukofotlar</h3>
+                    <p>Maqsadlaringizga erishganingizda mukofotlar va olmoslar oling.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats -->
+    <section class="stats">
+        <div class="container">
+            <div class="stat-grid">
+                <div class="stat-item">
+                    <div class="stat-number" id="total-users">1000+</div>
+                    <div class="stat-label">Foydalanuvchi</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="total-goals">500+</div>
+                    <div class="stat-label">Maqsad</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="success-rate">85%</div>
+                    <div class="stat-label">Muvaffaqiyat darajasi</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number">24/7</div>
+                    <div class="stat-label">Qo'llab-quvvatlash</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta">
+        <div class="container">
+            <h2>Bugundan boshlang!</h2>
+            <p style="max-width: 600px; margin: 1rem auto 2rem; opacity: 0.9;">
+                Hech qachon kech emas. Yolchi platformasida o'z maqsadlaringizga yo'l oling.
+            </p>
+            <a href="https://t.me/yolchi_goals_bot" class="btn" target="_blank">
+                🤖 Hozir boshlash
+            </a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container footer-content">
+            <div class="footer-section">
+                <h3>🎯 Yolchi</h3>
+                <p>Maqsadlaringizni belgilash va ularga erishish platformasi.</p>
+            </div>
+            <div class="footer-section">
+                <h3>Havolalar</h3>
+                <ul class="footer-links">
+                    <li><a href="/">Bosh sahifa</a></li>
+                    <li><a href="/goals">Maqsadlar</a></li>
+                    <li><a href="https://t.me/yolchi_goals_bot" target="_blank">Telegram bot</a></li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h3>Aloqa</h3>
+                <ul class="footer-links">
+                    <li>📧 support@yolchi.uz</li>
+                    <li>📞 +998 XX XXX XX XX</li>
+                    <li>📍 Toshkent, O'zbekiston</li>
+                </ul>
+            </div>
+        </div>
+        <div class="container text-center" style="padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1);">
+            <p style="color: #cbd5e0; font-size: 0.9rem;">
+                © 2024 Yolchi Platformasi. Barcha huquqlar himoyalangan.
+            </p>
+        </div>
+    </footer>
+
+    <script src="/js/app.js"></script>
+    <script>
+        // Dinamik statistikalar
+        fetch('/api/stats')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('total-users').textContent = 
+                        data.stats.totalUsers + '+';
+                    document.getElementById('total-goals').textContent = 
+                        data.stats.totalGoals + '+';
+                    document.getElementById('success-rate').textContent = 
+                        data.stats.completedGoals > 0 ? 
+                        Math.round((data.stats.completedGoals / data.stats.totalGoals) * 100) + '%' : 
+                        '85%';
+                }
+            });
+        
+        // Auth holatini tekshirish
+        fetch('/api/auth/check')
+            .then(response => response.json())
+            .then(data => {
+                const loginBtn = document.getElementById('login-btn');
+                if (data.authenticated && data.user) {
+                    loginBtn.textContent = '👤 Profil';
+                    loginBtn.href = '/profile';
+                }
+            });
+    </script>
+</body>
+</html>

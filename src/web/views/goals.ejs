@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - Yolchi</title>
+    <style>
+        /* Asosiy stillarni qayta yozamiz, faqat zarur o'zgarishlar */
+        
+        .goals-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 3rem 0;
+            text-align: center;
+        }
+        
+        .filters {
+            background: white;
+            padding: 2rem;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin: -50px auto 3rem;
+            max-width: 1200px;
+            position: relative;
+        }
+        
+        .filter-form {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .filter-form select,
+        .filter-form input {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px 15px;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+        
+        .filter-form button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin: 3rem 0;
+        }
+        
+        .page-link {
+            padding: 8px 15px;
+            border: 1px solid #e2e8f0;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #4a5568;
+        }
+        
+        .page-link.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 4rem 0;
+            color: #a0aec0;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar (home.ejs dagi kabi) -->
+    <nav class="navbar">
+        <div class="container nav-content">
+            <a href="/" class="logo">🎯 Yolchi</a>
+            <div class="nav-links">
+                <a href="/">Bosh sahifa</a>
+                <a href="/goals">Maqsadlar</a>
+                <a href="https://t.me/<%= config.botUsername %>" target="_blank">Telegram bot</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="goals-header">
+        <div class="container">
+            <h1>Barcha Maqsadlar</h1>
+            <p><%= goals.length %> ta maqsad topildi</p>
+        </div>
+    </header>
+
+    <!-- Filters -->
+    <div class="container">
+        <div class="filters">
+            <form class="filter-form" action="/goals" method="get">
+                <select name="category">
+                    <option value="">Barcha kategoriyalar</option>
+                    <% categories.forEach(category => { %>
+                    <option value="<%= category %>" <%= currentCategory === category ? 'selected' : '' %>>
+                        <%= category %>
+                    </option>
+                    <% }); %>
+                </select>
+                <input type="text" name="search" placeholder="Maqsad nomi bo'yicha qidirish..." value="<%= searchQuery || '' %>">
+                <button type="submit">Qidirish</button>
+                <% if (currentCategory || searchQuery) { %>
+                <a href="/goals" style="padding: 10px 15px; color: #667eea; text-decoration: none;">Tozalash</a>
+                <% } %>
+            </form>
+        </div>
+
+        <!-- Goals Grid -->
+        <% if (goals.length > 0) { %>
+        <div class="goals-grid">
+            <% goals.forEach(goal => { %>
+            <div class="goal-card">
+                <span class="goal-category"><%= goal.category %></span>
+                <h3 class="goal-title">
+                    <a href="/goal/<%= goal.id %>" style="color: inherit; text-decoration: none;">
+                        <%= goal.name %>
+                    </a>
+                </h3>
+                <p class="goal-description"><%= goal.description.substring(0, 150) %>...</p>
+                <div class="goal-meta">
+                    <span>👤 <%= goal.authorName %></span>
+                    <span>👥 <%= goal.participants || 0 %> ishtirokchi</span>
+                    <span>📅 <%= new Date(goal.createdAt).toLocaleDateString('uz-UZ') %></span>
+                </div>
+                <a href="/goal/<%= goal.id %>" style="display: inline-block; margin-top: 1rem; color: #667eea; text-decoration: none; font-weight: 600;">
+                    Batafsil →
+                </a>
+            </div>
+            <% }); %>
+        </div>
+
+        <!-- Pagination -->
+        <% if (totalPages > 1) { %>
+        <div class="pagination">
+            <% if (currentPage > 1) { %>
+            <a href="/goals?page=<%= currentPage - 1 %><%= currentCategory ? '&category=' + currentCategory : '' %><%= searchQuery ? '&search=' + searchQuery : '' %>" class="page-link">← Oldingi</a>
+            <% } %>
+            
+            <% for (let i = 1; i <= totalPages; i++) { %>
+            <% if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) { %>
+            <a href="/goals?page=<%= i %><%= currentCategory ? '&category=' + currentCategory : '' %><%= searchQuery ? '&search=' + searchQuery : '' %>" 
+               class="page-link <%= i === currentPage ? 'active' : '' %>">
+                <%= i %>
+            </a>
+            <% } else if (i === currentPage - 3 || i === currentPage + 3) { %>
+            <span class="page-link">...</span>
+            <% } %>
+            <% } %>
+            
+            <% if (currentPage < totalPages) { %>
+            <a href="/goals?page=<%= currentPage + 1 %><%= currentCategory ? '&category=' + currentCategory : '' %><%= searchQuery ? '&search=' + searchQuery : '' %>" class="page-link">Keyingi →</a>
+            <% } %>
+        </div>
+        <% } %>
+
+        <% } else { %>
+        <div class="empty-state">
+            <h3>Maqsadlar topilmadi</h3>
+            <p>Hozircha bu kategoriyada maqsadlar mavjud emas yoki qidiruv bo'yicha natija yo'q.</p>
+            <a href="/goals" class="btn">Barcha maqsadlarni ko'rish</a>
+        </div>
+        <% } %>
+    </div>
+
+    <!-- Footer (home.ejs dagi kabi) -->
+    <footer class="footer">
+        <div class="container footer-content">
+            <div class="footer-section">
+                <h3>🎯 Yolchi</h3>
+                <p>Maqsadlaringizni belgilash va ularga erishish platformasi.</p>
+            </div>
+            <div class="footer-section">
+                <h3>Havolalar</h3>
+                <ul class="footer-links">
+                    <li><a href="/">Bosh sahifa</a></li>
+                    <li><a href="/goals">Maqsadlar</a></li>
+                    <li><a href="https://t.me/<%= config.botUsername %>">Telegram bot</a></li>
+                </ul>
+            </div>
+            <div class="footer-section">
+                <h3>Aloqa</h3>
+                <ul class="footer-links">
+                    <li>📧 support@yolchi.uz</li>
+                    <li>📞 +998 XX XXX XX XX</li>
+                    <li>📍 Toshkent, O'zbekiston</li>
+                </ul>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
