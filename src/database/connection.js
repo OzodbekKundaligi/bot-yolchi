@@ -1,100 +1,88 @@
 const fs = require('fs').promises;
 const path = require('path');
+const config = require('../config/bot.config');
 
 class Database {
     constructor() {
-        this.dataDir = path.join(__dirname, '../data');
-        this.init();
+        this.dataDir = path.join(__dirname, '../../data');
+        this.data = {
+            users: [],
+            goals: [],
+            participations: [],
+            recommendations: []
+        };
+        this.isRailway = config.isProduction;
     }
 
     async init() {
         try {
-            await fs.mkdir(this.dataDir, { recursive: true });
-            
-            // Kerakli fayllarni yaratish
-            const files = ['users.json', 'goals.json', 'participations.json', 'recommendations.json'];
-            
-            for (const file of files) {
-                const filePath = path.join(this.dataDir, file);
-                try {
-                    await fs.access(filePath);
-                } catch {
-                    await fs.writeFile(filePath, JSON.stringify([]));
+            if (!this.isRailway) {
+                // Local: JSON fayllar
+                await fs.mkdir(this.dataDir, { recursive: true });
+                const files = ['users.json', 'goals.json', 'participations.json', 'recommendations.json'];
+                
+                for (const file of files) {
+                    const filePath = path.join(this.dataDir, file);
+                    try {
+                        await fs.access(filePath);
+                        const data = await fs.readFile(filePath, 'utf8');
+                        this.data[file.replace('.json', '')] = JSON.parse(data);
+                    } catch {
+                        await fs.writeFile(filePath, JSON.stringify([]));
+                        this.data[file.replace('.json', '')] = [];
+                    }
                 }
+                console.log('✅ Local database initialized');
+            } else {
+                // Railway: Memory database
+                console.log('✅ Railway memory database initialized');
             }
             
-            console.log('Database initialized successfully');
-        } catch (error) {
-            console.error('Database initialization error:', error);
-        }
-    }
-
-    async readFile(filename) {
-        try {
-            const filePath = path.join(this.dataDir, filename);
-            const data = await fs.readFile(filePath, 'utf8');
-            return JSON.parse(data);
-        } catch (error) {
-            console.error(`Error reading ${filename}:`, error);
-            return [];
-        }
-    }
-
-    async writeFile(filename, data) {
-        try {
-            const filePath = path.join(this.dataDir, filename);
-            await fs.writeFile(filePath, JSON.stringify(data, null, 2));
             return true;
         } catch (error) {
-            console.error(`Error writing ${filename}:`, error);
-            return false;
+            console.error('❌ Database initialization error:', error);
+            // Memory da davom et
+            return true;
         }
     }
 
-    // User operations
+    // Users
     async getUser(userId) {
-        const users = await this.readFile('users.json');
-        return users.find(user => user.id === userId || user.userId === userId);
+        return this.data.users.find(user => user.id == userId);
     }
 
     async createUser(userData) {
-        const users = await this.readFile('users.json');
-        
-        // Check if user exists
-        const existingUser = users.find(u => u.id === userData.id);
-        if (existingUser) {
-            return existingUser;
-        }
+        const existingUser = this.data.users.find(u => u.id == userData.id);
+        if (existingUser) return existingUser;
 
-        users.push({
+        const newUser = {
             ...userData,
             createdAt: new Date().toISOString(),
             diamonds: 0,
             goalsCreated: 0,
             goalsJoined: 0
-        });
-
-        await this.writeFile('users.json', users);
-        return userData;
+        };
+        
+        this.data.users.push(newUser);
+        await this.saveToFile('users');
+        return newUser;
     }
 
     async updateUser(userId, updates) {
-        const users = await this.readFile('users.json');
-        const userIndex = users.findIndex(u => u.id === userId);
-        
-        if (userIndex !== -1) {
-            users[userIndex] = { ...users[userIndex], ...updates, updatedAt: new Date().toISOString() };
-            await this.writeFile('users.json', users);
-            return users[userIndex];
-        }
-        
-        return null;
+        const userIndex = this.data.users.findIndex(u => u.id == userId);
+        if (userIndex === -1) return null;
+
+        this.data.users[userIndex] = { 
+            ...this.data.users[userIndex], 
+            ...updates, 
+            updatedAt: new Date().toISOString() 
+        };
+        await this.saveToFile('users');
+        return this.data.users[userIndex];
     }
 
-    // Goal operations
+    // Goals
     async createGoal(goalData) {
-        const goals = await this.readFile('goals.json');
-        
         const newGoal = {
             id: Date.now().toString(),
             ...goalData,
@@ -104,63 +92,64 @@ class Database {
             participants: 0,
             likes: 0,
             dislikes: 0,
-            isPublished: false
+            isPublished: false,
+            channelMessageId: null
         };
 
-        goals.push(newGoal);
-        await this.writeFile('goals.json', goals);
+        this.data.goals.push(newGoal);
+        await this.saveToFile('goals');
         
-        // Update user's goalsCreated count
+        // Update user stats
         const user = await this.getUser(goalData.authorId);
         if (user) {
-            await this.updateUser(goalData.authorId, { goalsCreated: (user.goalsCreated || 0) + 1 });
+            await this.updateUser(goalData.authorId, { 
+                goalsCreated: (user.goalsCreated || 0) + 1 
+            });
         }
 
         return newGoal;
     }
 
     async getGoal(goalId) {
-        const goals = await this.readFile('goals.json');
-        return goals.find(goal => goal.id === goalId);
+        return this.data.goals.find(goal => goal.id === goalId);
     }
 
     async getUserGoals(userId) {
-        const goals = await this.readFile('goals.json');
-        return goals.filter(goal => goal.authorId === userId);
+        return this.data.goals.filter(goal => goal.authorId == userId);
     }
 
     async getPublishedGoals() {
-        const goals = await this.readFile('goals.json');
-        return goals.filter(goal => goal.isPublished && goal.status === 'active');
+        return this.data.goals.filter(goal => goal.isPublished && goal.status === 'active');
     }
 
     async getGoalsByCategory(category) {
-        const goals = await this.readFile('goals.json');
-        return goals.filter(goal => goal.category === category && goal.isPublished);
+        return this.data.goals.filter(goal => goal.category === category && goal.isPublished);
     }
 
     async updateGoal(goalId, updates) {
-        const goals = await this.readFile('goals.json');
-        const goalIndex = goals.findIndex(g => g.id === goalId);
-        
-        if (goalIndex !== -1) {
-            goals[goalIndex] = { ...goals[goalIndex], ...updates };
-            await this.writeFile('goals.json', goals);
-            return goals[goalIndex];
-        }
-        
-        return null;
+        const goalIndex = this.data.goals.findIndex(g => g.id === goalId);
+        if (goalIndex === -1) return null;
+
+        this.data.goals[goalIndex] = { 
+            ...this.data.goals[goalIndex], 
+            ...updates 
+        };
+        await this.saveToFile('goals');
+        return this.data.goals[goalIndex];
     }
 
-    // Participation operations
+    // For search
+    async getRecommendations(limit = 10) {
+        const published = this.data.goals.filter(g => g.isPublished);
+        return published.slice(0, limit);
+    }
+
+    // Participations
     async joinGoal(userId, goalId) {
-        const participations = await this.readFile('participations.json');
-        
-        // Check if already joined
-        const existing = participations.find(p => p.userId === userId && p.goalId === goalId);
-        if (existing) {
-            return existing;
-        }
+        const existing = this.data.participations.find(p => 
+            p.userId == userId && p.goalId === goalId
+        );
+        if (existing) return existing;
 
         const newParticipation = {
             id: Date.now().toString(),
@@ -170,67 +159,50 @@ class Database {
             status: 'pending'
         };
 
-        participations.push(newParticipation);
-        await this.writeFile('participations.json', participations);
+        this.data.participations.push(newParticipation);
+        await this.saveToFile('participations');
         
         // Update goal participants count
         const goal = await this.getGoal(goalId);
         if (goal) {
-            await this.updateGoal(goalId, { participants: (goal.participants || 0) + 1 });
+            await this.updateGoal(goalId, { 
+                participants: (goal.participants || 0) + 1 
+            });
         }
         
-        // Update user's goalsJoined count
+        // Update user stats
         const user = await this.getUser(userId);
         if (user) {
-            await this.updateUser(userId, { goalsJoined: (user.goalsJoined || 0) + 1 });
+            await this.updateUser(userId, { 
+                goalsJoined: (user.goalsJoined || 0) + 1 
+            });
         }
 
         return newParticipation;
     }
 
     async getUserParticipations(userId) {
-        const participations = await this.readFile('participations.json');
-        return participations.filter(p => p.userId === userId);
+        return this.data.participations.filter(p => p.userId == userId);
     }
 
     async getGoalParticipants(goalId) {
-        const participations = await this.readFile('participations.json');
-        return participations.filter(p => p.goalId === goalId);
+        return this.data.participations.filter(p => p.goalId === goalId);
     }
 
-    // Recommendation operations
-    async createRecommendation(recData) {
-        const recommendations = await this.readFile('recommendations.json');
+    // Helper methods
+    async saveToFile(filename) {
+        if (this.isRailway) return; // Railway'da faylga yozmaymiz
         
-        const newRec = {
-            id: Date.now().toString(),
-            ...recData,
-            createdAt: new Date().toISOString(),
-            likes: 0,
-            dislikes: 0
-        };
-
-        recommendations.push(newRec);
-        await this.writeFile('recommendations.json', recommendations);
-        return newRec;
-    }
-
-    async getRecommendations(limit = 10) {
-        const recommendations = await this.readFile('recommendations.json');
-        return recommendations.slice(0, limit);
-    }
-
-    async updateRecommendation(recId, updates) {
-        const recommendations = await this.readFile('recommendations.json');
-        const recIndex = recommendations.findIndex(r => r.id === recId);
-        
-        if (recIndex !== -1) {
-            recommendations[recIndex] = { ...recommendations[recIndex], ...updates };
-            await this.writeFile('recommendations.json', recommendations);
-            return recommendations[recIndex];
+        try {
+            const filePath = path.join(this.dataDir, `${filename}.json`);
+            await fs.writeFile(filePath, JSON.stringify(this.data[filename], null, 2));
+        } catch (error) {
+            console.error(`Error saving ${filename}:`, error);
         }
-        
-        return null;
+    }
+
+    async readFile(filename) {
+        return this.data[filename.replace('.json', '')] || [];
     }
 }
 

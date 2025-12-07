@@ -2,82 +2,93 @@ const db = require('../database/connection');
 const MainMenuKeyboard = require('../keyboards/mainMenu');
 const GoalCreationKeyboard = require('../keyboards/goalCreation');
 const config = require('../config/bot.config');
-const Helpers = require('../utils/helpers');
 
 class AdminHandler {
     static async handleGoalApproval(ctx, action, goalId) {
         try {
-            const adminId = ctx.from.id;
+            console.log('🔄 ADMIN: Goal approval process started');
+            console.log(`📝 Goal ID: ${goalId}, Action: ${action}`);
+            console.log(`👤 Admin ID: ${ctx.from.id}`);
+            console.log(`📋 Admin list: ${config.adminIds}`);
             
-            // Adminligini tekshirish
-            if (!config.adminIds.includes(adminId.toString())) {
-                await ctx.reply('Siz admin emassiz.');
+            // Admin tekshirish
+            const isAdmin = config.isAdmin(ctx.from.id);
+            console.log(`👑 Is admin? ${isAdmin}`);
+            
+            if (!isAdmin) {
+                await ctx.reply('❌ Siz admin emassiz!');
                 return;
             }
 
+            // Goal ni olish
             const goal = await db.getGoal(goalId);
             if (!goal) {
-                await ctx.reply('Maqsad topilmadi.');
+                await ctx.reply('❌ Maqsad topilmadi!');
                 return;
             }
 
+            console.log(`🎯 Found goal: ${goal.name}`);
+
             if (action === 'approve') {
-                // 1. Maqsadni tasdiqlash
+                console.log('✅ Approving goal...');
+                
+                // 1. Goal ni yangilash
                 await db.updateGoal(goalId, {
                     status: 'active',
                     isPublished: true,
                     approvedAt: new Date().toISOString(),
-                    approvedBy: adminId
+                    approvedBy: ctx.from.id
                 });
 
-                // 2. KANALGA POST QO'YISH
-                await this.postToChannel(ctx, goal);
+                console.log('📝 Goal updated in database');
+
+                // 2. KANALGA POST QO'YISH (ENG MUHIM QISM!)
+                const postResult = await this.postToChannel(ctx, goal);
                 
-                // 3. Foydalanuvchiga xabar yuborish
+                if (!postResult.success) {
+                    await ctx.reply(`⚠️ Maqsad tasdiqlandi, lekin kanalga joylanmadi: ${postResult.error}`);
+                    return;
+                }
+
+                console.log('📤 Post sent to channel successfully');
+
+                // 3. Foydalanuvchiga xabar
                 try {
                     await ctx.telegram.sendMessage(
                         goal.authorId,
-                        `🎉 Tabriklaymiz!\n\n"${goal.name}" maqsadingiz tasdiqlandi va kanalga joylandi.\n\n` +
+                        `🎉 TABRIKLAYMIZ!\n\n"${goal.name}" maqsadingiz tasdiqlandi va kanalga joylandi.\n\n` +
                         `Endi boshqalar sizning maqsadingizga qo'shilishi mumkin.`,
                         MainMenuKeyboard.getMainMenu()
                     );
+                    console.log(`📩 Notification sent to user: ${goal.authorId}`);
                 } catch (error) {
-                    console.error('Failed to notify user:', error);
+                    console.error('❌ Failed to notify user:', error);
                 }
 
-                // 4. Boshqa adminlarga xabar
-                for (const admin of config.adminIds) {
-                    if (admin !== adminId.toString()) {
-                        try {
-                            await ctx.telegram.sendMessage(
-                                admin,
-                                `✅ Maqsad tasdiqlandi:\n"${goal.name}"\nTasdiqlovchi: @${ctx.from.username || 'admin'}`,
-                                MainMenuKeyboard.removeKeyboard()
-                            );
-                        } catch (error) {
-                            console.error(`Failed to notify admin ${admin}:`, error);
-                        }
-                    }
-                }
-
-                await ctx.reply('✅ Maqsad tasdiqlandi va nashr qilindi.');
+                // 4. Admin javobi
+                await ctx.reply(`✅ "${goal.name}" maqsadi tasdiqlandi va kanalga joylandi!`);
                 
-                // Xabarni o'chirish
-                await ctx.deleteMessage();
+                // 5. Xabarni o'chirish
+                try {
+                    await ctx.deleteMessage();
+                } catch (e) {
+                    console.log('Could not delete message:', e);
+                }
 
             } else if (action === 'reject') {
-                // Maqsadni rad etish
+                console.log('❌ Rejecting goal...');
+                
                 await db.updateGoal(goalId, {
                     status: 'cancelled',
                     isPublished: false,
                     rejectionReason: 'Admin tomonidan rad etildi'
                 });
 
-                // Foydalanuvchiga xabar yuborish
+                // Foydalanuvchiga xabar
                 try {
                     await ctx.telegram.sendMessage(
                         goal.authorId,
-                        `⚠️ Maqsadingiz rad etildi.\n\n"${goal.name}" maqsadingiz platforma qoidalariga mos kelmadi.\n` +
+                        `⚠️ MAQSAD RAD ETILDI\n\n"${goal.name}" maqsadingiz platforma qoidalariga mos kelmadi.\n\n` +
                         `Sabab: Platforma qoidalariga mos kelmadi\n\n` +
                         `Yangidan maqsad yaratishingiz mumkin.`,
                         MainMenuKeyboard.getMainMenu()
@@ -88,107 +99,134 @@ class AdminHandler {
 
                 await ctx.reply('❌ Maqsad rad etildi.');
                 
-                // Xabarni o'chirish
-                await ctx.deleteMessage();
+                try {
+                    await ctx.deleteMessage();
+                } catch (e) {
+                    console.log('Could not delete message:', e);
+                }
             }
 
         } catch (error) {
-            console.error('Goal approval error:', error);
-            await ctx.reply('Xatolik yuz berdi.');
+            console.error('❌ Goal approval ERROR:', error);
+            await ctx.reply(`❌ Xatolik: ${error.message}`);
         }
     }
 
-    // KANALGA POST QO'YISH FUNKSIYASI
+    // ============ KANALGA POST QO'YISH ============
     static async postToChannel(ctx, goal) {
         try {
-            // Kanal username yoki ID si
-            const channelId = config.channelId;
-            const channelUsername = config.channelUsername;
+            console.log('📤 Attempting to post to channel...');
             
-            if (!channelId && !channelUsername) {
-                console.error('Kanal ID yoki username topilmadi');
-                return;
+            // Kanalni aniqlash
+            const channelTarget = config.getChannelTarget();
+            console.log(`🎯 Channel target: ${channelTarget}`);
+            
+            if (!channelTarget) {
+                console.log('❌ No channel configured');
+                return { success: false, error: 'Kanal sozlanmagan' };
             }
-            
+
             // Post matnini tayyorlash
             const postText = this.formatGoalPost(goal);
-            
-            // Inline keyboard - qo'shilish tugmasi
+            console.log(`📝 Post text length: ${postText.length} chars`);
+
+            // Inline keyboard
             const keyboard = {
                 inline_keyboard: [
                     [
                         {
-                            text: "✅ Qo'shilish",
+                            text: "✅ QO'SHILISH",
                             callback_data: `join_goal_${goal.id}`
                         },
                         {
-                            text: "🤖 Botga o'tish",
-                            url: `https://t.me/${config.botUsername}`
+                            text: "🤖 BOTGA O'TISH",
+                            url: `https://t.me/${config.botUsername}?start=goal_${goal.id}`
                         }
                     ]
                 ]
             };
+
+            console.log('🔄 Sending to Telegram API...');
             
-            // Postni kanalga joylash
+            // Telegram API ga so'rov
             let message;
-            
-            if (channelId) {
-                // ID orqali
+            try {
                 message = await ctx.telegram.sendMessage(
-                    channelId,
+                    channelTarget,
                     postText,
                     {
                         parse_mode: 'HTML',
-                        reply_markup: keyboard
+                        reply_markup: keyboard,
+                        disable_web_page_preview: true
                     }
                 );
-            } else if (channelUsername) {
-                // Username orqali
-                message = await ctx.telegram.sendMessage(
-                    channelUsername,
-                    postText,
-                    {
-                        parse_mode: 'HTML',
-                        reply_markup: keyboard
+                
+                console.log('✅ Telegram API success!');
+                console.log(`📨 Message ID: ${message.message_id}`);
+                
+            } catch (telegramError) {
+                console.error('❌ Telegram API error:', telegramError);
+                
+                // Tafsilotli xatolik tahlili
+                if (telegramError.description) {
+                    console.error(`📝 Error description: ${telegramError.description}`);
+                    
+                    if (telegramError.description.includes('chat not found')) {
+                        return { 
+                            success: false, 
+                            error: 'Kanal topilmadi. ID/Username ni tekshiring' 
+                        };
                     }
-                );
+                    if (telegramError.description.includes('not enough rights')) {
+                        return { 
+                            success: false, 
+                            error: 'Bot kanalda admin emas!' 
+                        };
+                    }
+                    if (telegramError.description.includes('bot was blocked')) {
+                        return { 
+                            success: false, 
+                            error: 'Bot kanaldan bloklangan' 
+                        };
+                    }
+                }
+                
+                return { 
+                    success: false, 
+                    error: telegramError.message || 'Noma\'lum Telegram xatosi' 
+                };
             }
-            
+
             // Post ID sini saqlash
             if (message && message.message_id) {
                 await db.updateGoal(goal.id, {
                     channelMessageId: message.message_id,
                     channelPostDate: new Date().toISOString()
                 });
+                console.log(`💾 Saved channel message ID: ${message.message_id}`);
             }
-            
-            console.log(`✅ Maqsad kanalga joylandi: ${goal.name}`);
-            
+
+            return { success: true, messageId: message.message_id };
+
         } catch (error) {
-            console.error('Kanalga post joylash xatosi:', error);
-            
-            // Agar bot kanalda admin bo'lmasa
-            if (error.description && error.description.includes('not enough rights')) {
-                console.error('Bot kanalda admin emas!');
-                console.error('Iltimos, botni kanalga admin qiling:');
-                console.error('1. Kanal sozlamalariga boring');
-                console.error('2. Adminlar ro\'yxatiga qo\'shing');
-                console.error('3. Quyidagi huquqlarni bering:');
-                console.error('   - Xabarlar yuborish');
-                console.error('   - Inline keyboard qo\'shish');
-            }
+            console.error('❌ Post to channel ERROR:', error);
+            return { success: false, error: error.message };
         }
     }
     
-    // POST MATNINI FORMAT QILISH
+    // ============ POST MATNI FORMATI ============
     static formatGoalPost(goal) {
         const category = goal.category || 'Umumiy';
-        const duration = Helpers.formatDuration ? Helpers.formatDuration(goal.duration) : `${goal.duration} kun`;
+        const duration = goal.duration === 'custom' ? 'Maqsad tugaguncha' : `${goal.duration} kun`;
         const authorName = goal.authorName || 'Noma\'lum';
         const description = goal.description || '';
-        const shortDescription = description.length > 300 ? 
-            description.substring(0, 300) + '...' : description;
         
+        // Qisqa tarif (maksimum 300 belgi)
+        const shortDescription = description.length > 300 
+            ? description.substring(0, 300) + '...' 
+            : description;
+        
+        // Hashtag lar
         const hashtags = `#${category.replace(/\s+/g, '_')} #Yolchi_Maqsad`;
         
         return `<b>🎯 YANGI MAQSAD</b>\n\n` +
@@ -201,107 +239,48 @@ class AdminHandler {
                `<i>${hashtags}</i>`;
     }
     
-    // QO'SHILISH SO'ROVI
-    static async handleJoinRequest(ctx, action, goalId, userId) {
+    // ============ QO'SHIMCHA FUNKSIYALAR ============
+    
+    // Kanalni test qilish
+    static async testChannel(ctx) {
         try {
-            const adminId = ctx.from.id;
-            const goal = await db.getGoal(goalId);
+            const channelTarget = config.getChannelTarget();
             
-            if (!goal || goal.authorId !== adminId) {
-                await ctx.reply('Bu maqsad sizga tegishli emas yoki mavjud emas.');
-                return;
+            if (!channelTarget) {
+                return '❌ Kanal sozlanmagan. .env da CHANNEL_ID yoki CHANNEL_USERNAME ni kiriting.';
             }
-
-            const user = await db.getUser(userId);
-            if (!user) {
-                await ctx.reply('Foydalanuvchi topilmadi.');
-                return;
-            }
-
-            if (action === 'approve') {
-                // Qo'shilishni tasdiqlash
-                // Bu yerda participations.json faylini yangilash kerak
-                
-                // Foydalanuvchiga xabar
-                try {
-                    await ctx.telegram.sendMessage(
-                        userId,
-                        `🎉 Tabriklaymiz!\n\n"${goal.name}" maqsadiga qo'shildingiz.\n` +
-                        `Endi maqsad doshlari bilan birga ishlashingiz mumkin.`,
-                        MainMenuKeyboard.getMainMenu()
-                    );
-                } catch (error) {
-                    console.error('Failed to notify user:', error);
-                }
-                
-                // Kanaldagi postni yangilash (ishtirokchilar soni)
-                await this.updateChannelPost(ctx, goal);
-                
-                await ctx.reply('✅ Foydalanuvchi qo\'shildi.');
-
-            } else if (action === 'reject') {
-                // Qo'shilishni rad etish
-                await ctx.reply('❌ Foydalanuvchi rad etildi.');
-                
-                // Foydalanuvchiga xabar
-                try {
-                    await ctx.telegram.sendMessage(
-                        userId,
-                        `⚠️ "${goal.name}" maqsadiga qo'shilish so'rovingiz rad etildi.\n` +
-                        `Sabab: Maqsad egasi rad etdi\n\n` +
-                        `Boshqa maqsadlarga qo'shilishingiz mumkin.`,
-                        MainMenuKeyboard.getMainMenu()
-                    );
-                } catch (error) {
-                    console.error('Failed to notify user:', error);
-                }
-            }
-
-            // Xabarni o'chirish
-            await ctx.deleteMessage();
-
+            
+            const testText = `🔧 TEST XABAR\n\n` +
+                           `Sana: ${new Date().toLocaleDateString('uz-UZ')}\n` +
+                           `Vaqt: ${new Date().toLocaleTimeString('uz-UZ')}\n` +
+                           `Platforma: Yolchi Bot`;
+            
+            const message = await ctx.telegram.sendMessage(
+                channelTarget,
+                testText,
+                { parse_mode: 'HTML' }
+            );
+            
+            return `✅ Test muvaffaqiyatli!\n` +
+                   `Kanal: ${channelTarget}\n` +
+                   `Xabar ID: ${message.message_id}`;
+            
         } catch (error) {
-            console.error('Join request error:', error);
-            await ctx.reply('Xatolik yuz berdi.');
+            return `❌ Test xatosi: ${error.message}`;
         }
     }
     
-    // KANALDAGI POSTNI YANGILASH (ishtirokchilar soni)
-    static async updateChannelPost(ctx, goal) {
-        try {
-            if (!goal.channelMessageId || !config.channelId) {
-                return;
-            }
-            
-            const updatedText = this.formatGoalPost(goal);
-            
-            await ctx.telegram.editMessageText(
-                config.channelId,
-                goal.channelMessageId,
-                null,
-                updatedText,
-                {
-                    parse_mode: 'HTML',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text: "✅ Qo'shilish",
-                                    callback_data: `join_goal_${goal.id}`
-                                },
-                                {
-                                    text: "🤖 Botga o'tish",
-                                    url: `https://t.me/${config.botUsername}`
-                                }
-                            ]
-                        ]
-                    }
-                }
-            );
-            
-        } catch (error) {
-            console.error('Postni yangilash xatosi:', error);
-        }
+    // Admin ma'lumotlari
+    static async getAdminInfo(ctx) {
+        const isAdmin = config.isAdmin(ctx.from.id);
+        const channelTarget = config.getChannelTarget();
+        
+        return `👑 ADMIN MA'LUMOTLARI\n\n` +
+               `Sizning ID: ${ctx.from.id}\n` +
+               `Adminmi: ${isAdmin ? '✅ HA' : '❌ YO\'Q'}\n` +
+               `Adminlar ro'yxati: ${config.adminIds.join(', ')}\n` +
+               `Kanal: ${channelTarget || 'Sozlanmagan'}\n` +
+               `Bot: @${config.botUsername}`;
     }
 }
 

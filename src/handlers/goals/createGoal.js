@@ -1,8 +1,6 @@
 const db = require('../../database/connection');
-const messages = require('../../utils/messages');
 const MainMenuKeyboard = require('../../keyboards/mainMenu');
 const GoalCreationKeyboard = require('../../keyboards/goalCreation');
-const Helpers = require('../../utils/helpers');
 const config = require('../../config/bot.config');
 
 // Maqsad yaratish holatlari
@@ -13,20 +11,19 @@ class CreateGoalHandler {
         try {
             const userId = ctx.from.id;
             
-            // Holatni boshlash
             goalCreationStates[userId] = {
                 step: 'waiting_name',
                 data: {}
             };
 
             await ctx.reply(
-                messages.ENTER_GOAL_NAME,
+                '🎯 Maqsadingiz nomini kiriting:',
                 MainMenuKeyboard.getCancelButton()
             );
 
         } catch (error) {
             console.error('Create goal init error:', error);
-            await ctx.reply(messages.ERROR_OCCURRED);
+            await ctx.reply('❌ Xatolik yuz berdi. Iltimos, keyinroq urinib ko\'ring.');
         }
     }
 
@@ -36,29 +33,30 @@ class CreateGoalHandler {
             const state = goalCreationStates[userId];
             const goalName = ctx.message.text.trim();
 
-            if (!state || state.step !== 'waiting_name') {
+            if (!state || state.step !== 'waiting_name') return;
+
+            // Soddalashtirilgan validatsiya
+            if (goalName.length < 3) {
+                await ctx.reply('❌ Maqsad nomi juda qisqa. Kamida 3 ta belgi kiriting.');
                 return;
             }
 
-            // Nomni tekshirish
-            const validationError = Helpers.validateGoalName(goalName);
-            if (validationError) {
-                await ctx.reply(validationError);
+            if (goalName.length > 100) {
+                await ctx.reply('❌ Maqsad nomi juda uzun. Maksimum 100 ta belgi.');
                 return;
             }
 
-            // Holatni yangilash
             state.step = 'waiting_description';
             state.data.name = goalName;
 
             await ctx.reply(
-                messages.ENTER_GOAL_DESCRIPTION,
+                '📝 Maqsadingiz haqida batafsil yozing (kamida 20 ta belgi):',
                 MainMenuKeyboard.getCancelButton()
             );
 
         } catch (error) {
             console.error('Goal name error:', error);
-            await ctx.reply(messages.ERROR_OCCURRED);
+            await ctx.reply('❌ Xatolik yuz berdi.');
         }
     }
 
@@ -68,29 +66,30 @@ class CreateGoalHandler {
             const state = goalCreationStates[userId];
             const description = ctx.message.text.trim();
 
-            if (!state || state.step !== 'waiting_description') {
+            if (!state || state.step !== 'waiting_description') return;
+
+            // Soddalashtirilgan validatsiya
+            if (description.length < 20) {
+                await ctx.reply('❌ Tarif juda qisqa. Kamida 20 ta belgi kiriting.');
                 return;
             }
 
-            // Tarifni tekshirish
-            const validationError = Helpers.validateGoalDescription(description);
-            if (validationError) {
-                await ctx.reply(validationError);
+            if (description.length > 2000) {
+                await ctx.reply('❌ Tarif juda uzun. Maksimum 2000 ta belgi.');
                 return;
             }
 
-            // Holatni yangilash
             state.step = 'waiting_duration';
             state.data.description = description;
 
             await ctx.reply(
-                messages.SELECT_DURATION,
+                '⏱️ Maqsad necha kun davom etadi?',
                 GoalCreationKeyboard.getDurationButtons()
             );
 
         } catch (error) {
             console.error('Goal description error:', error);
-            await ctx.reply(messages.ERROR_OCCURRED);
+            await ctx.reply('❌ Xatolik yuz berdi.');
         }
     }
 
@@ -99,22 +98,19 @@ class CreateGoalHandler {
             const userId = ctx.from.id;
             const state = goalCreationStates[userId];
 
-            if (!state || state.step !== 'waiting_duration') {
-                return;
-            }
+            if (!state || state.step !== 'waiting_duration') return;
 
-            // Holatni yangilash
             state.step = 'waiting_category';
             state.data.duration = duration;
 
             await ctx.reply(
-                messages.SELECT_CATEGORY,
+                '🏷️ Maqsad kategoriyasini tanlang:',
                 GoalCreationKeyboard.getCategoryButtons()
             );
 
         } catch (error) {
             console.error('Duration selection error:', error);
-            await ctx.reply(messages.ERROR_OCCURRED);
+            await ctx.reply('❌ Xatolik yuz berdi.');
         }
     }
 
@@ -124,9 +120,7 @@ class CreateGoalHandler {
             const state = goalCreationStates[userId];
             const user = await db.getUser(userId);
 
-            if (!state || state.step !== 'waiting_category') {
-                return;
-            }
+            if (!state || state.step !== 'waiting_category') return;
 
             // Maqsadni saqlash
             const goalData = {
@@ -143,13 +137,15 @@ class CreateGoalHandler {
             delete goalCreationStates[userId];
 
             await ctx.reply(
-                messages.GOAL_CREATED(goal.name),
+                `🎉 "${goal.name}" maqsadi yaratildi!\n\n` +
+                `Hozircha tekshiruv jarayonida.\n` +
+                `Admin tasdiqlagandan so'ng kanalga joylansinmi?`,
                 GoalCreationKeyboard.getPublishConfirmation()
             );
 
         } catch (error) {
             console.error('Category selection error:', error);
-            await ctx.reply(messages.ERROR_OCCURRED);
+            await ctx.reply('❌ Xatolik yuz berdi.');
         }
     }
 
@@ -159,44 +155,48 @@ class CreateGoalHandler {
             
             if (decision === 'no') {
                 await ctx.reply(
-                    messages.GOAL_NOT_PUBLISHED,
+                    '✅ Maqsadingiz saqlandi, lekan kanalga joylanmaydi.',
                     MainMenuKeyboard.getMainMenu()
                 );
                 return;
             }
 
-            // Agar "Ha" tanlansa, adminlarga xabar yuborish
-            const adminIds = config.adminIds;
-            const lastGoal = await db.getUserGoals(userId);
-            const goal = lastGoal[lastGoal.length - 1];
+            // "Ha" tanlansa - adminlarga xabar
+            const lastGoal = (await db.getUserGoals(userId)).pop();
+            if (!lastGoal) {
+                await ctx.reply('❌ Maqsad topilmadi.');
+                return;
+            }
 
-            if (goal) {
-                for (const adminId of adminIds) {
-                    try {
-                        await ctx.telegram.sendMessage(
-                            adminId,
-                            `🆕 Yangi maqsad yaratildi!\n\n` +
-                            `Nomi: ${goal.name}\n` +
-                            `Muallif: ${goal.authorName}\n` +
-                            `Kategoriya: ${goal.category}\n` +
-                            `Davomiylik: ${Helpers.formatDuration(goal.duration)}\n\n` +
-                            `Tarif: ${Helpers.truncateText(goal.description, 200)}`,
-                            GoalCreationKeyboard.getGoalApproval(goal.id)
-                        );
-                    } catch (error) {
-                        console.error(`Failed to send to admin ${adminId}:`, error);
-                    }
+            console.log(`📨 Sending to admins: ${lastGoal.name}`);
+            
+            // Adminlarga yuborish
+            for (const adminId of config.adminIds) {
+                try {
+                    await ctx.telegram.sendMessage(
+                        adminId,
+                        `🆕 YANGI MAQSAD\n\n` +
+                        `Nomi: ${lastGoal.name}\n` +
+                        `Muallif: ${lastGoal.authorName}\n` +
+                        `Kategoriya: ${lastGoal.category}\n` +
+                        `Davomiylik: ${lastGoal.duration} kun\n\n` +
+                        `Tasdiqlash yoki rad etish uchun pastdagi tugmalardan foydalaning.`,
+                        GoalCreationKeyboard.getGoalApproval(lastGoal.id)
+                    );
+                    console.log(`✅ Sent to admin: ${adminId}`);
+                } catch (error) {
+                    console.error(`❌ Failed to send to admin ${adminId}:`, error);
                 }
             }
 
             await ctx.reply(
-                'Maqsadingiz adminlarga yuborildi. Tasdiqlash kutilmoqda...',
+                '📬 Maqsadingiz adminlarga yuborildi. Tasdiqlashni kuting...',
                 MainMenuKeyboard.getMainMenu()
             );
 
         } catch (error) {
             console.error('Publish decision error:', error);
-            await ctx.reply(messages.ERROR_OCCURRED);
+            await ctx.reply('❌ Xatolik yuz berdi.');
         }
     }
 
@@ -206,13 +206,13 @@ class CreateGoalHandler {
             delete goalCreationStates[userId];
             
             await ctx.reply(
-                'Maqsad yaratish bekor qilindi.',
+                '❌ Maqsad yaratish bekor qilindi.',
                 MainMenuKeyboard.getMainMenu()
             );
 
         } catch (error) {
             console.error('Cancel goal creation error:', error);
-            await ctx.reply(messages.ERROR_OCCURRED);
+            await ctx.reply('❌ Xatolik yuz berdi.');
         }
     }
 }

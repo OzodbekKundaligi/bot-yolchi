@@ -1,18 +1,16 @@
-// bot.js - SearchHandler importini tuzatamiz
-
 const { Telegraf, session } = require('telegraf');
 require('dotenv').config();
 
 const config = require('./config/bot.config');
 const db = require('./database/connection');
 
-// Handlerlarni to'g'ri import qilish
+// Handlerlar
 const StartHandler = require('./handlers/start');
 const { ProfileHandler, userStates } = require('./handlers/profile');
 const { CreateGoalHandler, goalCreationStates } = require('./handlers/goals/createGoal');
 const { MyGoalsHandler, paginationStates } = require('./handlers/goals/myGoals');
 const JoinedGoalsHandler = require('./handlers/goals/joinedGoals');
-const SearchHandler = require('./handlers/search'); // FAKAT SearchHandler
+const SearchHandler = require('./handlers/search');
 const AboutHandler = require('./handlers/about');
 const AdminHandler = require('./admin/notifications');
 
@@ -26,10 +24,12 @@ const bot = new Telegraf(config.botToken);
 // Session middleware
 bot.use(session());
 
-// Start command
+// ============ ASOSIY HANDLERLAR ============
+
+// Start
 bot.start(StartHandler.handleStart);
 
-// Asosiy menyu tugmalari
+// Asosiy menyu
 bot.hears('🏠 Asosiy menyu', StartHandler.handleMainMenu);
 bot.hears('⬅️ Orqaga', StartHandler.handleBack);
 bot.hears('❌ Bekor qilish', StartHandler.handleCancel);
@@ -48,199 +48,187 @@ bot.hears('4️⃣ Asosiy menyu', StartHandler.handleMainMenu);
 // Profil
 bot.hears('🪪 Profil', ProfileHandler.handleProfile);
 
-// Maqsadlar (qidirish)
+// Qidirish
 bot.hears('🎯 Maqsadlar', (ctx) => {
-    if (SearchHandler && SearchHandler.handleSearchMenu) {
-        SearchHandler.handleSearchMenu(ctx);
-    } else {
-        ctx.reply('Qidirish menyusi:\n\n💡 Tavsiyalar\n🔍 Kategoriya bo\'yicha qidirish\n🏠 Asosiy menyu',
-            MainMenuKeyboard.getSearchMenu());
-    }
-});
-
-// Tavsiyalar
-bot.hears('💡 Tavsiyalar', (ctx) => {
-    if (SearchHandler && SearchHandler.handleRecommendations) {
-        SearchHandler.handleRecommendations(ctx);
-    } else {
-        ctx.reply('Tavsiyalar tizimi hozircha ishga tushmagan.');
-    }
-});
-
-// Kategoriya qidirish
-bot.hears('🔍 Kategoriya bo\'yicha qidirish', (ctx) => {
-    if (SearchHandler && SearchHandler.handleCategorySearch) {
-        SearchHandler.handleCategorySearch(ctx);
-    } else {
-        ctx.reply('Kategoriyalar:\n\nBiznes, Karyera, Ta\'lim, Do\'stlar, Sog\'lom hayot, Qiziqishlar, Til o\'rganish, Zamonaviy kasblar, Shaxsiy rivojlanish, Kitobxonlik, Talaba, Sayohat, Sport',
-            MainMenuKeyboard.getSearchMenu());
-    }
+    SearchHandler.handleSearchMenu(ctx);
 });
 
 // Biz haqimizda
 bot.hears('ℹ️ Biz haqimizda', AboutHandler.handleAbout);
 
-// Kategoriya tanlash (matn orqali)
+// ============ YANGI: TEST KOMANDALARI ============
+
+// Kanalni test qilish
+bot.command('testchannel', async (ctx) => {
+    try {
+        const result = await AdminHandler.testChannel(ctx);
+        await ctx.reply(result);
+    } catch (error) {
+        await ctx.reply(`❌ Test xatosi: ${error.message}`);
+    }
+});
+
+// Admin ma'lumotlari
+bot.command('admininfo', async (ctx) => {
+    const info = await AdminHandler.getAdminInfo(ctx);
+    await ctx.reply(info);
+});
+
+// Ma'lumotlar bazasi holati
+bot.command('dbstatus', async (ctx) => {
+    const users = await db.readFile('users.json');
+    const goals = await db.readFile('goals.json');
+    await ctx.reply(
+        `📊 DATABASE HOLATI\n\n` +
+        `👥 Foydalanuvchilar: ${users.length} ta\n` +
+        `🎯 Maqsadlar: ${goals.length} ta\n` +
+        `📍 Environment: ${config.nodeEnv}\n` +
+        `🤖 Bot: @${config.botUsername}`
+    );
+});
+
+// ID ni olish
+bot.command('myid', (ctx) => {
+    ctx.reply(`🆔 SIZNING ID'INGIZ: ${ctx.from.id}\n👤 Ism: ${ctx.from.first_name}`);
+});
+
+// Bot holati
+bot.command('status', (ctx) => {
+    ctx.reply(
+        `🤖 BOT HOLATI\n\n` +
+        `✅ Ishlamoqda\n` +
+        `👑 Adminlar: ${config.adminIds.length} ta\n` +
+        `🎯 Kanal: ${config.getChannelTarget() || 'Sozlanmagan'}\n` +
+        `🌐 Environment: ${config.nodeEnv}`
+    );
+});
+
+// ============ TEXT HANDLER ============
+
 bot.on('text', async (ctx) => {
-    const text = ctx.message.text.trim();
     const userId = ctx.from.id;
+    const text = ctx.message.text.trim();
     
-    // Kategoriyalar ro'yxati
+    // Maqsad yaratish holati
+    const goalState = goalCreationStates[userId];
+    if (goalState) {
+        if (goalState.step === 'waiting_name') {
+            await CreateGoalHandler.handleGoalName(ctx);
+            return;
+        } else if (goalState.step === 'waiting_description') {
+            await CreateGoalHandler.handleGoalDescription(ctx);
+            return;
+        }
+    }
+    
+    // Profil tahrirlash
+    const profileState = userStates[userId];
+    if (profileState && profileState.step === 'waiting_input') {
+        await ProfileHandler.handleTextInput(ctx);
+        return;
+    }
+    
+    // Kategoriya tanlash
     const categories = [
         'Biznes', 'Karyera', 'Ta\'lim', 'Do\'stlar', 'Sog\'lom hayot',
         'Qiziqishlar', 'Til o\'rganish', 'Zamonaviy kasblar',
         'Shaxsiy rivojlanish', 'Kitobxonlik', 'Talaba', 'Sayohat', 'Sport'
     ];
     
-    // Agar kategoriya tanlangan bo'lsa
     if (categories.includes(text)) {
-        if (SearchHandler && SearchHandler.handleCategorySelection) {
-            await SearchHandler.handleCategorySelection(ctx, text);
-        } else {
-            ctx.reply(`"${text}" kategoriyasini tanladingiz.`);
-        }
-        return;
-    }
-    
-    // Maqsadlar ro'yxatidan tanlash (raqam yozilsa)
-    if (!isNaN(text) && parseInt(text) > 0) {
-        // Bu qismni keyinroq to'ldiramiz
+        await SearchHandler.handleCategorySelection(ctx, text);
         return;
     }
 });
 
-// Inline callback query handler
+// ============ CALLBACK QUERY HANDLER ============
+
 bot.on('callback_query', async (ctx) => {
     const callbackData = ctx.callbackQuery.data;
     
     try {
-        // LIKE/DISLIKE handler
-        if (callbackData.startsWith('like_rec_')) {
-            const recId = callbackData.replace('like_rec_', '');
-            if (SearchHandler && SearchHandler.handleLikeDislike) {
-                await SearchHandler.handleLikeDislike(ctx, 'like', recId);
-            }
-        }
-        else if (callbackData.startsWith('dislike_rec_')) {
-            const recId = callbackData.replace('dislike_rec_', '');
-            if (SearchHandler && SearchHandler.handleLikeDislike) {
-                await SearchHandler.handleLikeDislike(ctx, 'dislike', recId);
-            }
-        }
-        else if (callbackData.startsWith('join_rec_')) {
-            const recId = callbackData.replace('join_rec_', '');
-            if (SearchHandler && SearchHandler.handleJoinRecommendation) {
-                await SearchHandler.handleJoinRecommendation(ctx, recId);
-            }
+        console.log(`📞 Callback received: ${callbackData}`);
+        
+        // Davomiylik tanlash
+        if (callbackData.startsWith('duration_')) {
+            const duration = callbackData.replace('duration_', '');
+            await CreateGoalHandler.handleDurationSelection(ctx, duration);
         }
         
-        // Sahifalash
-        else if (callbackData.includes('_page_')) {
-            const [type, , pageStr] = callbackData.split('_');
-            const page = parseInt(pageStr);
-            
-            if (type === 'category_goals' || type === 'recommendations') {
-                if (SearchHandler && SearchHandler.handlePagination) {
-                    await SearchHandler.handlePagination(ctx, page, type);
-                }
-            }
+        // Kategoriya tanlash
+        else if (callbackData.startsWith('category_')) {
+            const category = callbackData.replace('category_', '');
+            await CreateGoalHandler.handleCategorySelection(ctx, category);
+        }
+        
+        // Nashr qilish tanlovi
+        else if (callbackData.startsWith('publish_')) {
+            const decision = callbackData.replace('publish_', '');
+            await CreateGoalHandler.handlePublishDecision(ctx, decision);
+        }
+        
+        // Maqsadni tasdiqlash/rad etish
+        else if (callbackData.startsWith('approve_') || callbackData.startsWith('reject_')) {
+            const action = callbackData.startsWith('approve_') ? 'approve' : 'reject';
+            const goalId = callbackData.replace(`${action}_`, '');
+            await AdminHandler.handleGoalApproval(ctx, action, goalId);
+        }
+        
+        // Bekor qilish
+        else if (callbackData === 'cancel_goal_creation') {
+            await CreateGoalHandler.handleCancelGoalCreation(ctx);
+        }
+        
+        // Asosiy menyu
+        else if (callbackData === 'main_menu') {
+            await StartHandler.handleMainMenu(ctx);
         }
         
         await ctx.answerCbQuery();
         
     } catch (error) {
-        console.error('Callback query error:', error);
-        await ctx.answerCbQuery();
+        console.error('❌ Callback query error:', error);
+        await ctx.answerCbQuery('❌ Xatolik yuz berdi');
     }
 });
 
-// Xatoliklar
+// ============ XATOLIK HANDLER ============
+
 bot.catch((err, ctx) => {
-    console.error(`Error for ${ctx.updateType}:`, err);
-    ctx.reply('Xatolik yuz berdi. Iltimos, keyinroq urinib ko\'ring.');
+    console.error(`❌ Error for ${ctx.updateType}:`, err);
+    ctx.reply('❌ Xatolik yuz berdi. Iltimos, keyinroq urinib ko\'ring.');
 });
 
-// Botni ishga tushirish
+// ============ BOTNI ISHGA TUSHIRISH ============
+
 async function startBot() {
     try {
-        // Database ni ishga tushirish
-        await db.init();
+        console.log('🚀 Bot ishga tushmoqda...');
+        console.log(`📅 Sana: ${new Date().toLocaleDateString('uz-UZ')}`);
+        console.log(`🌐 Environment: ${config.nodeEnv}`);
+        console.log(`🤖 Bot: @${config.botUsername}`);
+        console.log(`👑 Adminlar: ${config.adminIds.length} ta`);
+        console.log(`🎯 Kanal: ${config.getChannelTarget() || 'Sozlanmagan'}`);
         
-        console.log('Database initialized');
+        // Database
+        await db.init();
+        console.log('✅ Database ready');
         
         // Botni ishga tushirish
         await bot.launch();
-        console.log('🤖 Bot ishga tushdi!');
+        console.log('✅ Bot started successfully!');
+        console.log('===================================');
         
         // Graceful shutdown
         process.once('SIGINT', () => bot.stop('SIGINT'));
         process.once('SIGTERM', () => bot.stop('SIGTERM'));
         
     } catch (error) {
-        console.error('Failed to start bot:', error);
+        console.error('❌ Failed to start bot:', error);
         process.exit(1);
     }
 }
-// Kanal ID sini olish uchun komanda
-bot.command('getchannelid', async (ctx) => {
-    try {
-        // Forward qilingan xabar orqali
-        if (ctx.message.reply_to_message) {
-            const chatId = ctx.message.reply_to_message.chat.id;
-            const chatType = ctx.message.reply_to_message.chat.type;
-            const chatTitle = ctx.message.reply_to_message.chat.title;
-            
-            await ctx.reply(
-                `📊 Chat ma'lumotlari:\n` +
-                `ID: ${chatId}\n` +
-                `Tur: ${chatType}\n` +
-                `Nomi: ${chatTitle}\n\n` +
-                `Kanal ID uchun: ${chatId}`
-            );
-        } else {
-            await ctx.reply('Kanal ID sini olish uchun kanaldan xabarni forward qiling yoki reply bering.');
-        }
-    } catch (error) {
-        console.error('Get channel ID error:', error);
-        await ctx.reply('Xatolik yuz berdi.');
-    }
-});
-// Kanal test komandasi
-bot.command('testchannel', async (ctx) => {
-    try {
-        const channelId = config.channelId;
-        const channelUsername = config.channelUsername;
-        
-        await ctx.reply(
-            `🔧 Kanal test:\n` +
-            `Kanal ID: ${channelId || 'Mavjud emas'}\n` +
-            `Kanal username: ${channelUsername || 'Mavjud emas'}\n` +
-            `Bot token: ${config.botToken ? 'Mavjud' : 'Mavjud emas'}\n\n` +
-            `Tayyorlanmoqda...`
-        );
-        
-        // Test xabarini yuborish
-        if (channelId || channelUsername) {
-            try {
-                const testMessage = await ctx.telegram.sendMessage(
-                    channelId || channelUsername,
-                    '🔧 Test xabari - Yolchi Platformasi ishlayapti!',
-                    { parse_mode: 'HTML' }
-                );
-                
-                await ctx.reply(`✅ Test muvaffaqiyatli! Xabar ID: ${testMessage.message_id}`);
-            } catch (error) {
-                await ctx.reply(`❌ Xatolik: ${error.message}`);
-            }
-        } else {
-            await ctx.reply('❌ Kanal ID yoki username topilmadi.');
-        }
-        
-    } catch (error) {
-        console.error('Test channel error:', error);
-        await ctx.reply(`❌ Xatolik: ${error.message}`);
-    }
-});
+
 // Ishga tushirish
 startBot();
 
